@@ -39,6 +39,65 @@ CubeState InitCubeRenderState() {
     return visualCube;
 }
 
+static constexpr uint8_t SLOT_ORI_FACES[8][3][3] =
+{
+    // slot 0 (-X, +Y, +Z)
+    {
+        {2, 0, 4}, // ori 0
+        {4, 2, 0}, // ori 1
+        {0, 4, 2}  // ori 2
+    },
+
+    // slot 1 (+X, +Y, +Z)
+    {
+        {2, 0, 5}, // ori 0
+        {0, 5, 2}, // ori 1
+        {5, 2, 0}  // ori 2
+    },
+
+    // slot 2 (-X, +Y, -Z)
+    {
+        {2, 1, 4}, // ori 0
+        {1, 4, 2}, // ori 1
+        {4, 2, 1}  // ori 2
+    },
+
+    // slot 3 (+X, +Y, -Z)
+    {
+        {2, 1, 5}, // ori 0
+        {5, 2, 1}, // ori 1
+        {1, 5, 2}  // ori 2
+    },
+
+    // slot 4 (-X, -Y, +Z)
+    {
+        {3, 0, 4}, // ori 0
+        {0, 4, 3}, // ori 1
+        {4, 3, 0}  // ori 2
+    },
+
+    // slot 5 (+X, -Y, +Z)
+    {
+        {3, 0, 5}, // ori 0
+        {5, 3, 0}, // ori 1
+        {0, 5, 3}  // ori 2
+    },
+
+    // slot 6 (-X, -Y, -Z)
+    {
+        {3, 1, 4}, // ori 0
+        {4, 3, 1}, // ori 1
+        {1, 4, 3}  // ori 2
+    },
+
+    // slot 7 (+X, -Y, -Z)
+    {
+        {3, 1, 5}, // ori 0
+        {1, 5, 3}, // ori 1
+        {5, 3, 1}  // ori 2
+    }
+};
+
 // Atualiza os cubies do Cubo (a partir do estado lógico)
 void UpdateCubeFromLogic(const State &logicState, CubeState &cube){
     for(int slot = 0; slot < 8; slot++){
@@ -49,34 +108,49 @@ void UpdateCubeFromLogic(const State &logicState, CubeState &cube){
         // Cores do cubinho específico a partir do ID
         CubieColor cc = CubieColors[id];
 
-        // Mapeia os índices das 3 faces externas na ordem do array:
-        // faces[0] = Y, faces[1] = Z, faces[2] = X
-        int faces[3];
-        faces[0] = (slot < 4) ? 2 : 3;                                          // Y: 2 (+Y), 3 (-Y)
-        faces[1] = (slot == 0 || slot == 1 || slot == 4 || slot == 5) ? 0 : 1; // Z: 0 (+Z), 1 (-Z)
-        faces[2] = (slot % 2 == 1) ? 5 : 4;                                     // X: 5 (+X), 4 (-X)
-
-        // Limpeza das faces anteriores
+        // Limpa as 6 faces com a cor base (plástico interno)
         cube.cubies[slot].faceColors.fill((Color){ 20, 20, 20, 255 });
-        
-        // Calcula a quiralidade 3D (Handedness) do slot a partir do sinal (X * Y * Z)
-        auto getHandedness = [](int s) {
+
+        /*
+         * LUT:
+         *
+         * map[0] = face da PRIMARY
+         * map[1] = face da SECONDARY
+         * map[2] = face da TERTIARY
+         */
+        const auto& map = SLOT_ORI_FACES[slot][ori];
+
+        int primaryFace   = map[0];
+        int secondaryFace = map[1];
+        int tertiaryFace  = map[2];
+
+        /*
+         * A quiralidade do cubinho é uma propriedade do ID.
+         * A quiralidade da posição é uma propriedade do SLOT.
+         *
+         * Quando são diferentes, secondary e tertiary precisam
+         * trocar de lugar.
+         */
+        auto handedness = [](int s) -> bool
+        {
             bool posX = (s % 2 == 1);
             bool posY = (s < 4);
             bool posZ = (s == 0 || s == 1 || s == 4 || s == 5);
-            return (posX ^ posY ^ posZ);
+
+            return posX ^ posY ^ posZ;
         };
 
-        bool sameHandedness = (getHandedness(id) == getHandedness(slot));
+        bool sameHandedness =
+            handedness(id) == handedness(slot);
 
-        // Atribui as faces utilizando permutação cíclica
-        int primaryIdx = ori;
-        int secIdx     = sameHandedness ? (ori + 1) % 3 : (ori + 2) % 3;
-        int sec2Idx    = sameHandedness ? (ori + 2) % 3 : (ori + 1) % 3;
+        if (!sameHandedness)
+        {
+            std::swap(secondaryFace, tertiaryFace);
+        }
 
-        cube.cubies[slot].faceColors[faces[primaryIdx]] = cc.primary;
-        cube.cubies[slot].faceColors[faces[secIdx]]     = cc.sec;
-        cube.cubies[slot].faceColors[faces[sec2Idx]]    = cc.sec2;
+        cube.cubies[slot].faceColors[primaryFace]   = cc.primary;
+        cube.cubies[slot].faceColors[secondaryFace] = cc.sec;
+        cube.cubies[slot].faceColors[tertiaryFace]  = cc.sec2;
     }
 }
 

@@ -3,6 +3,13 @@
 #include "../include/State.h"
 #include "../include/Transition.h"
 
+static const Vector3 SLOT_POSITIONS[8] = {
+    {-0.52f,  0.52f,  0.52f}, { 0.52f,  0.52f,  0.52f},
+    {-0.52f,  0.52f, -0.52f}, { 0.52f,  0.52f, -0.52f},
+    {-0.52f, -0.52f,  0.52f}, { 0.52f, -0.52f,  0.52f},
+    {-0.52f, -0.52f, -0.52f}, { 0.52f, -0.52f, -0.52f}
+};
+
 int main() {
     InitWindow(1280, 720, "Renderizador Cubo 2x2");
 
@@ -54,9 +61,13 @@ int main() {
                 // Desenha o cubo
                 RenderCube(cubeRender, 1.0f);
                 DrawGrid(10, 1.0f);
-
+                
             EndMode3D();
 
+            for (int slot = 0; slot < 8; slot++) {
+                    Vector2 screenPos = GetWorldToScreen(SLOT_POSITIONS[slot], camera);
+                    DrawText(TextFormat("%d", slot), (int)screenPos.x - 6, (int)screenPos.y - 10, 22, BLACK);
+            }
             DrawFPS(10, 10);
             DrawText("Rubik Cube Simulator", 10, 35, 18, LIGHTGRAY);
 
