@@ -3,13 +3,19 @@
 
 using namespace std;
 
-const int U_CYCLE[4] = {2, 3, 0, 1};
+// Face U (Topo, +Y): Slots 2 (-X,-Z) -> 3 (+X,-Z) -> 1 (+X,+Z) -> 0 (-X,+Z)
+// Girando em torno do eixo Y, a orientação principal (topo/base) não altera (twist = 0)
+const int U_CYCLE[4] = {2, 3, 1, 0};
 const int U_TWIST[4] = {0, 0, 0, 0};
 
-const int R_CYCLE[4] = {3, 0, 4, 6};
+// Face R (Direita, +X): Slots 1 (+Y,+Z) -> 3 (+Y,-Z) -> 7 (-Y,-Z) -> 5 (-Y,+Z)
+// Giro horário visto pelo lado direito (+X)
+const int R_CYCLE[4] = {1, 3, 7, 5};
 const int R_TWIST[4] = {1, 2, 1, 2};
 
-const int F_CYCLE[4] = {1, 0, 4, 5};
+// Face F (Frente, +Z): Slots 0 (+Y,-X) -> 1 (+Y,+X) -> 5 (-Y,+X) -> 4 (-Y,-X)
+// Giro horário visto de frente (+Z)
+const int F_CYCLE[4] = {0, 1, 5, 4};
 const int F_TWIST[4] = {2, 1, 2, 1};
 
 State transition(State curr_state, const int cycle[4], const int twist[4]){

@@ -22,7 +22,11 @@ struct CubeState {
     array<CubieData, 8> cubies;
 };
 
-// Conversão do estado lógico para o estado de renderização (CubeState)
-CubeState UpdateCubeFromLogic(const State& logicState);
+CubeState InitCubeRenderState();
 
-void DrawCube(const CubeState& cube, float cubieSize = 1.0f);
+// Conversão do estado lógico para o estado de renderização (CubeState)
+void UpdateCubeFromLogic(const State& logicState, CubeState& cube);
+
+void DrawCubie(const CubeState& cube, float cubieSize = 1.0f);
+
+void RenderCube(CubeState cube, float cubie_size);

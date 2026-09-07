@@ -1,137 +1,68 @@
-#include <raylib.h>
+#include "raylib.h"
+#include "../include/CubeRenderer.h"
+#include "../include/State.h"
+#include "../include/Transition.h"
 
-int main(){
-    const int screenWidth = 1200;
-    const int screenHeight = 800;
-    InitWindow(screenWidth, screenHeight, "Visualizador de Array 3D");
+int main() {
+    InitWindow(1280, 720, "Renderizador Cubo 2x2");
 
-    // Configuração da Câmera 3D
     Camera3D camera = { 0 };
-    camera.position = (Vector3){ 8.0f, 6.0f, 8.0f }; // Posição da câmera no espaço
-    camera.target = (Vector3){ 0.0f, 0.0f, 0.0f };   // Ponto para onde ela olha
-    camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };       // Define o eixo Y como "para cima"
-    camera.fovy = 45.0f;                             // Campo de visão (Field of view) em graus
-    camera.projection = CAMERA_PERSPECTIVE;          // Perspectiva com profundidade
+    camera.position = (Vector3){ 3.5f, 3.5f, 3.5f };
+    camera.target = (Vector3){ 0.0f, 0.0f, 0.0f };
+    camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
+    camera.fovy = 45.0f;
+    camera.projection = CAMERA_PERSPECTIVE;
 
-    // 1 = desenha um cubo, 0 = espaço vazio
-    const int tamanho = 2;
-
+    // Estado Inicial
+    State cubeLogicState(0x1C1814100C080400ULL);
+    CubeState cubeRender = InitCubeRenderState();
+    UpdateCubeFromLogic(cubeLogicState, cubeRender);
+    
     SetTargetFPS(60);
 
-    // 4. Laço principal
     while (!WindowShouldClose()) {
+        UpdateCamera(&camera, CAMERA_FREE);
+
+        // SIMULAÇÃO DE ANIMAÇÃO / TESTE DE INTERFACE:
+        // Rotaciona as 4 peças superiores em torno do eixo Y para testar o renderizador
+        /*
+        static float animAngle = 0.0f;
+        animAngle += 1.0f;
+        for (int i = 0; i < 4; i++) {
+            visualState.cubies[i].rotationAxis = (Vector3){ 0, 1, 0 };
+            visualState.cubies[i].rotationAngle = animAngle;
+        }
         
-        // Atualiza a câmera (CAMERA_ORBITAL permite girar com o mouse/setas)
-        UpdateCamera(&camera, CAMERA_ORBITAL);
-
-        // 5. Início do desenho
+        */
+        if (IsKeyPressed(KEY_U)) {
+            cubeLogicState = transition(cubeLogicState, U_CYCLE, U_TWIST);
+            UpdateCubeFromLogic(cubeLogicState, cubeRender); 
+        }
+        if (IsKeyPressed(KEY_R)) {
+            cubeLogicState = transition(cubeLogicState, R_CYCLE, R_TWIST);
+            UpdateCubeFromLogic(cubeLogicState, cubeRender); 
+        }
+        if (IsKeyPressed(KEY_F)) {
+            cubeLogicState = transition(cubeLogicState, F_CYCLE, F_TWIST);
+            UpdateCubeFromLogic(cubeLogicState, cubeRender); 
+        }
         BeginDrawing();
-            ClearBackground(RAYWHITE);
+            ClearBackground((Color){ 30, 30, 30, 255 });
 
-            // Inicia o contexto 3D com as configurações da nossa câmera
             BeginMode3D(camera);
+                
+                // Desenha o cubo
+                RenderCube(cubeRender, 1.0f);
+                DrawGrid(10, 1.0f);
 
-            // Varredura do array e renderização
-            // Face 1
-            for (int y = 0; y < tamanho; y++) {
-                for (int z = 0; z < tamanho; z++) {
-                    Vector3 posicao = { 0, (float)y , (float)z };
-                    
-                    // Desenha o cubo sólido
-                    DrawCube(posicao, 0.1f, 1.0f, 1.0f, RED);
-
-                    // Desenha as arestas para visualização clara (Wireframe)
-                    DrawCubeWires(posicao, 0.1f, 1.0f, 1.0f, MAROON);
-                    
-                }
-                    
-            }
-
-            // Face 2
-            for (int y = 0; y < tamanho; y++) {
-                for (int z = 0; z < tamanho; z++) {
-                    Vector3 posicao = { 2, (float)y, (float)z};
-                    
-                    // Desenha o cubo sólido
-                    DrawCube(posicao, 0.1f, 1.0f, 1.0f, BLUE);
-
-                    // Desenha as arestas para visualização clara (Wireframe)
-                    DrawCubeWires(posicao, 0.1f, 1.0f, 1.0f, MAROON);
-                    
-                    }
-                    
-            }
-            
-            // Face Bottom
-            for (int x = 0; x < tamanho; x++) {
-                for (int z = 0; z < tamanho; z++) {
-                    Vector3 posicao = { (float)x + 0.5f, -0.5, (float)z};
-                    
-                    // Desenha o cubo sólido
-                    DrawCube(posicao, 1.0f, 0.1f, 1.0f, YELLOW);
-
-                    // Desenha as arestas para visualização clara (Wireframe)
-                    DrawCubeWires(posicao, 1.0f, 0.1f, 1.0f, MAROON);
-                    
-                }
-                    
-            }
-
-            // Face Top
-            for (int x = 0; x < tamanho; x++) {
-                for (int z = 0; z < tamanho; z++) {     
-                    Vector3 posicao = { (float)x +0.5f, 1.5, (float)z };
-                    
-                    // Desenha o cubo sólido
-                    DrawCube(posicao, 1.0f, 0.1f, 1.0f, WHITE);
-
-                    // Desenha as arestas para visualização clara (Wireframe)
-                    DrawCubeWires(posicao, 1.0f, 0.1f, 1.0f, MAROON);
-                    
-                }
-                    
-            }
-
-            // Face Direita
-            for (int x = 0; x < tamanho; x++) {
-                for (int y = 0; y < tamanho; y++) {
-                    Vector3 posicao = { (float)x +0.5f, (float)y, 1.5};
-                    
-                    // Desenha o cubo sólido
-                    DrawCube(posicao, 1.0f, 1.0f, 0.1f, GREEN);
-
-                    // Desenha as arestas para visualização clara (Wireframe)
-                    DrawCubeWires(posicao, 1.0f, 1.0f, 0.1f, MAROON);
-                    
-                }
-            }
-
-            // Face Esquerda
-            for (int x = 0; x < tamanho; x++) {
-                for (int y = 0; y < tamanho; y++) {
-                    Vector3 posicao = { (float)x +0.5f, (float)y, -0.5};
-                    
-                    // Desenha o cubo sólido
-                    DrawCube(posicao, 1.0f, 1.0f, 0.1f, PINK);
-
-                    // Desenha as arestas para visualização clara (Wireframe)
-                    DrawCubeWires(posicao, 1.0f, 1.0f, 0.1f, MAROON);
-                    
-                }
-            }
-
-            // Desenha uma grade no chão para referência espacial
-            //DrawGrid(10, 1.0f);
-
-            // Encerra o contexto 3D
             EndMode3D();
 
             DrawFPS(10, 10);
-            
+            DrawText("Rubik Cube Simulator", 10, 35, 18, LIGHTGRAY);
+
         EndDrawing();
     }
 
-    // 7. Limpeza da memória e fechamento
     CloseWindow();
     return 0;
 }

@@ -7,7 +7,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Procura a instalação do raylib
 find_package(Raylib 4.0 REQUIRED)
 
-add_executable(Cube src/main.cpp)
+add_executable(Cube 
+    src/main.cpp
+    src/CubeRenderer.cpp
+)
+
+target_include_directories(Cube PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 # Vincula a biblioteca
 target_link_libraries(Cube PRIVATE raylib)
