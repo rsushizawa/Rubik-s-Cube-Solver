@@ -13,3 +13,5 @@ struct State {
     full_state = val;
   }
 };
+
+inline constexpr uint64_t SOLVED_STATE = 0x1C1814100C080400ULL;

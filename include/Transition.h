@@ -1,64 +1,40 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
+#include <algorithm>
 #include "State.h"
-
-// ===========================================================================
-//  Corner model (2x2x2)
-// ===========================================================================
-//  State packs 8 slots into a uint64_t, one byte per slot:
-//
-//      byte = (id << 2) | ori
-//        id  : 0..7  which corner cubie currently sits in this slot
-//        ori : 0..2  twist of that cubie about its body diagonal
-//
-//  Slots are fixed points in space. Index bits: bit0 = X, bit1 = Z, bit2 = Y
-//  (0 => +, 1 => -):
-//
-//      0:(-X,+Y,+Z)  1:(+X,+Y,+Z)  2:(-X,+Y,-Z)  3:(+X,+Y,-Z)
-//      4:(-X,-Y,+Z)  5:(+X,-Y,+Z)  6:(-X,-Y,-Z)  7:(+X,-Y,-Z)
-//
-//  Solved: cubie i in slot i, ori 0  ->  0x1C1814100C080400
-//
-// ===========================================================================
-//  Moves
-// ===========================================================================
-//  A quarter turn is a 4-cycle of slots plus a per-step twist delta (mod 3):
-//
-//      piece at cycle[i]  moves to  cycle[(i + 1) % 4]
-//      new_ori = (old_ori + twist[i]) % 3
-//
-//  U, R, F are  -90 deg rotations about +Y, +X, +Z.
-//  D, L, B are  +90 deg rotations about the same axes (still clockwise when
-//  viewed from outside their own face).  Primes are the inverses.
-//
-//  U / D never change orientation (ori is measured against the U/D sticker).
-//  X-axis turns (R / L) twist by {2,1,2,1} / {1,2,1,2} along their cycle.
-//  Z-axis turns (F / B) twist by {2,1,2,1} / {1,2,1,2} along their cycle.
-//
-//  All tables were derived by tracking the U/D sticker of each moving corner
-//  through the rotation, and cross-checked against  m^4 = e,  m * m' = e,
-//  (R U R' U')^6 = e.
-
+/**
+ * One quarter turn of one face.
+ *
+ * Attributes
+ * ----------
+ * name: const char*
+ *     Notation for the move, e.g. "R" or "U'".
+ * cycle: int[4]
+ *     The 4 slots this move permutes, in order: cycle[i] -> cycle[i + 1].
+ * twist: int[4]
+ *     Orientation delta (mod 3) applied to the piece leaving cycle[i].
+ */
 struct Move {
   const char* name;
   int cycle[4];
   int twist[4];
 };
 
-// -- U / D : Y axis (no orientation change) ------------------------------
+// Y axis, no orientation change.
 inline constexpr Move MOVE_U  = { "U",  {2, 3, 1, 0}, {0, 0, 0, 0} };
 inline constexpr Move MOVE_Up = { "U'", {2, 0, 1, 3}, {0, 0, 0, 0} };
 inline constexpr Move MOVE_D  = { "D",  {4, 5, 7, 6}, {0, 0, 0, 0} };
 inline constexpr Move MOVE_Dp = { "D'", {4, 6, 7, 5}, {0, 0, 0, 0} };
 
-// -- R / L : X axis -----------------------------------------------------
+// X axis.
 inline constexpr Move MOVE_R  = { "R",  {1, 3, 7, 5}, {2, 1, 2, 1} };
 inline constexpr Move MOVE_Rp = { "R'", {1, 5, 7, 3}, {2, 1, 2, 1} };
 inline constexpr Move MOVE_L  = { "L",  {0, 4, 6, 2}, {1, 2, 1, 2} };
 inline constexpr Move MOVE_Lp = { "L'", {0, 2, 6, 4}, {1, 2, 1, 2} };
 
-// -- F / B : Z axis -----------------------------------------------------
+// Z axis.
 inline constexpr Move MOVE_F  = { "F",  {0, 1, 5, 4}, {2, 1, 2, 1} };
 inline constexpr Move MOVE_Fp = { "F'", {0, 4, 5, 1}, {2, 1, 2, 1} };
 inline constexpr Move MOVE_B  = { "B",  {2, 6, 7, 3}, {1, 2, 1, 2} };
@@ -71,8 +47,44 @@ inline constexpr Move ALL_MOVES[12] = {
   MOVE_F, MOVE_Fp, MOVE_B, MOVE_Bp,
 };
 
-// -- Application ---------------------------------------------------------
+inline constexpr Move THREE_ADJACENT_MOVES[6] = {
+  MOVE_R, MOVE_Rp, MOVE_U, MOVE_Up, MOVE_F, MOVE_Fp,
+};
 
+/**
+ * Index, within a move array that pairs each move with its inverse at
+ * adjacent indices (the convention both ALL_MOVES and
+ * THREE_ADJACENT_MOVES follow), of the inverse of the move at index i.
+ *
+ * Parameters
+ * ----------
+ * i: int
+ *     Index of the move whose inverse is wanted.
+ *
+ * Returns
+ * -------
+ * int
+ *     Index of that move's inverse in the same array.
+ */
+inline constexpr int inverse_index(int i) { return i ^ 1; }
+
+/**
+ * Apply a slot cycle and twist deltas to a state.
+ *
+ * Parameters
+ * ----------
+ * s: State
+ *     Starting state.
+ * cycle: const int[4]
+ *     The 4 slots to permute, in order.
+ * twist: const int[4]
+ *     Orientation delta (mod 3) applied to the piece leaving cycle[i].
+ *
+ * Returns
+ * -------
+ * State
+ *     The state after the cycle and twists are applied.
+ */
 inline State transition(State s, const int cycle[4], const int twist[4]) {
   State out = s;
   for (int i = 0; i < 4; ++i) {
@@ -84,10 +96,118 @@ inline State transition(State s, const int cycle[4], const int twist[4]) {
   return out;
 }
 
+/**
+ * Apply a named move to a state.
+ *
+ * Parameters
+ * ----------
+ * s: State
+ *     Starting state.
+ * m: const Move&
+ *     Move to apply.
+ *
+ * Returns
+ * -------
+ * State
+ *     The state after the move.
+ */
 inline State transition(State s, const Move& m) {
   return transition(s, m.cycle, m.twist);
 }
 
+/**
+ * Apply a named move to a packed state.
+ *
+ * Parameters
+ * ----------
+ * s: uint64_t
+ *     Starting state, packed.
+ * m: const Move&
+ *     Move to apply.
+ *
+ * Returns
+ * -------
+ * uint64_t
+ *     The state after the move, packed.
+ */
 inline uint64_t apply_move(uint64_t s, const Move& m) {
   return transition(State(s), m).full_state;
+}
+
+/**
+ * The 24 whole-cube rotations of SOLVED_STATE, found by composing existing
+ * moves: turning a pair of opposite faces together in matching senses
+ * (e.g. R then L') is geometrically a whole-cube rotation, since no
+ * middle layer is left standing still to block it.
+ *
+ * A 2x2 has no fixed centres, so none of these 24 states is more
+ * "correct" than another -- every solver treats all of them as solved.
+ *
+ * Returns
+ * -------
+ * const std::vector<uint64_t>&
+ *     Exactly 24 states: the cube's chiral rotation group.
+ */
+inline const std::vector<uint64_t>& solved_orbit() {
+  static const std::vector<uint64_t> orbit = [] {
+    using Rotation = uint64_t (*)(uint64_t);
+    const Rotation rotations[4] = {
+      [](uint64_t s){ return apply_move(apply_move(s, MOVE_R),  MOVE_Lp); },
+      [](uint64_t s){ return apply_move(apply_move(s, MOVE_Rp), MOVE_L);  },
+      [](uint64_t s){ return apply_move(apply_move(s, MOVE_U),  MOVE_Dp); },
+      [](uint64_t s){ return apply_move(apply_move(s, MOVE_Up), MOVE_D);  },
+    };
+    std::vector<uint64_t> result{SOLVED_STATE};
+    for (std::size_t i = 0; i < result.size(); ++i) {
+      for (Rotation rotate : rotations) {
+        uint64_t next = rotate(result[i]);
+        if (std::find(result.begin(), result.end(), next) == result.end()) result.push_back(next);
+      }
+    }
+    return result;
+  }();
+  return orbit;
+}
+
+/**
+ * The state(s) a search should treat as having reached `goal`: all 24
+ * whole-cube rotations when `goal` is SOLVED_STATE, or just `goal` itself
+ * otherwise. Lets a multi-source search (e.g. bidirectional BFS's
+ * backward half) seed every acceptable root at once.
+ *
+ * Parameters
+ * ----------
+ * goal: uint64_t
+ *     Target state (default is SOLVED_STATE).
+ *
+ * Returns
+ * -------
+ * std::vector<uint64_t>
+ *     States that count as the goal.
+ */
+inline std::vector<uint64_t> goal_states(uint64_t goal = SOLVED_STATE) {
+  if (goal == SOLVED_STATE) return solved_orbit();
+  return { goal };
+}
+
+/**
+ * Whether `s` counts as having reached `goal` -- see goal_states().
+ *
+ * Parameters
+ * ----------
+ * s: uint64_t
+ *     State to test.
+ * goal: uint64_t
+ *     Target state (default is SOLVED_STATE).
+ *
+ * Returns
+ * -------
+ * bool
+ *     True if `s` is `goal` itself, or (when goal is SOLVED_STATE) any of
+ *     its 24 whole-cube rotations.
+ */
+inline bool is_goal(uint64_t s, uint64_t goal = SOLVED_STATE) {
+  if (goal != SOLVED_STATE) return s == goal;
+  const std::vector<uint64_t>& orbit = solved_orbit();
+  return std::find(orbit.begin(), orbit.end(), s) != orbit.end();
 }
