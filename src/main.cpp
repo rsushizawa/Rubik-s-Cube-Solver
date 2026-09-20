@@ -2,6 +2,12 @@
 #include "../include/CubeRenderer.h"
 #include "../include/State.h"
 #include "../include/Transition.h"
+#include "../include/BfsSolver.h"
+#include "../include/Solve.h"
+#include "../include/Animation.h"
+
+#include <queue>
+#include <string>
 
 static const Vector3 SLOT_POSITIONS[8] = {
     {-0.52f,  0.52f,  0.52f}, { 0.52f,  0.52f,  0.52f},
@@ -9,6 +15,20 @@ static const Vector3 SLOT_POSITIONS[8] = {
     {-0.52f, -0.52f,  0.52f}, { 0.52f, -0.52f,  0.52f},
     {-0.52f, -0.52f, -0.52f}, { 0.52f, -0.52f, -0.52f}
 };
+
+// Function to apply Moves to a CubeLogicState (returns State)
+State applyMoves(State state, const std::vector<std::string>& moveNames, const std::vector<Move>&       
+  allMoves) {                                                                                               
+        for (const std::string& name : moveNames) {                                                         
+            for (const Move& m : allMoves) {                                                                
+                if (m.name == name) {                                                                       
+                    state = transition(state, m);                                                           
+                    break;                                                                                  
+                }                                                                                           
+            }                                                                                               
+        }                                                                                                   
+        return state;                                                                                       
+}
 
 int main() {
     InitWindow(1280, 720, "Renderizador Cubo 2x2");
@@ -24,6 +44,19 @@ int main() {
     State cubeLogicState(0x1C1814100C080400ULL);
     CubeState cubeRender = InitCubeRenderState();
     UpdateCubeFromLogic(cubeLogicState, cubeRender);
+
+    // Create an instance for solvers
+    std::vector<Move> allMoves(std::begin(ALL_MOVES), std::end(ALL_MOVES));
+    BfsSolver Bfs(allMoves);
+
+    // Armazena ultima solução
+    SearchResult lastResult;
+
+    // Estado atual da animação
+    ActiveAnimation animation;
+    
+    // Fila de movimentos para animar (se ativo)
+    std::queue<Move> moveQueue;
 
     SetTargetFPS(60);
 
@@ -44,6 +77,14 @@ int main() {
             }
         }
 
+        // Scrambles the Cube
+        if(IsKeyPressed(KEY_S)){
+            // Vetor com as rotações aleatórias
+            std::vector<std::string> scrambleMoves = scramble(allMoves, 4);
+            cubeLogicState = applyMoves(cubeLogicState, scrambleMoves, allMoves);
+            UpdateCubeFromLogic(cubeLogicState, cubeRender);
+        }
+
         BeginDrawing();
             ClearBackground((Color){ 30, 30, 30, 255 });
 
@@ -61,6 +102,7 @@ int main() {
             }
             DrawFPS(10, 10);
             DrawText("U D L R F B turn  |  SHIFT = inverse", 10, 35, 18, LIGHTGRAY);
+            DrawText("Press S to Scramble", 10, 60, 18, LIGHTGRAY);
 
         EndDrawing();
     }
