@@ -1,12 +1,12 @@
 #pragma once
 
 #include <cstdint>
+#include <random>
 #include <string>
 #include <vector>
-#include <random>
 
-#include "State.h"
-#include "Transition.h"
+#include "State.hpp"
+#include "Transition.hpp"
 
 /**
  * Generate a random scramble; never turns the same face twice in a row.
@@ -25,15 +25,17 @@
  * std::vector<std::string>
  *     `length` move names.
  */
-inline std::vector<std::string> scramble(const std::vector<Move>& moves, int length,
-                                          uint32_t seed = std::random_device{}()) {
+inline std::vector<std::string>
+scramble(const std::vector<Move> &moves, int length,
+         uint32_t seed = std::random_device{}()) {
   std::mt19937 rng(seed);
   std::uniform_int_distribution<int> pick(0, (int)moves.size() - 1);
   std::vector<std::string> result;
   int last = -1;
   while ((int)result.size() < length) {
     int chosen = pick(rng);
-    if (last >= 0 && moves[chosen].name[0] == moves[last].name[0]) continue;
+    if (last >= 0 && moves[chosen].name[0] == moves[last].name[0])
+      continue;
     result.push_back(moves[chosen].name);
     last = chosen;
   }
@@ -69,7 +71,8 @@ struct SearchResult {
   std::string notation() const {
     std::string text;
     for (std::size_t i = 0; i < moves.size(); ++i) {
-      if (i) text += ' ';
+      if (i)
+        text += ' ';
       text += moves[i];
     }
     return text;
@@ -98,16 +101,23 @@ struct SearchResult {
  *     True if replaying result.moves from start reaches goal (or, when
  *     goal is SOLVED_STATE, any of its 24 rotations -- see is_goal()).
  */
-inline bool verify_solution(const std::vector<Move>& moves, uint64_t start,
-                             const SearchResult& result, uint64_t goal = SOLVED_STATE) {
-  if (!result.found) return false;
+inline bool verify_solution(const std::vector<Move> &moves, uint64_t start,
+                            const SearchResult &result,
+                            uint64_t goal = SOLVED_STATE) {
+  if (!result.found)
+    return false;
   uint64_t state = start;
-  for (const std::string& name : result.moves) {
+  for (const std::string &name : result.moves) {
     bool applied = false;
-    for (const Move& m : moves) {
-      if (name == m.name) { state = apply_move(state, m); applied = true; break; }
+    for (const Move &m : moves) {
+      if (name == m.name) {
+        state = apply_move(state, m);
+        applied = true;
+        break;
+      }
     }
-    if (!applied) return false;
+    if (!applied)
+      return false;
   }
   return is_goal(state, goal);
 }
@@ -141,9 +151,10 @@ public:
    * SearchResult
    *     The outcome of the search; see SearchResult.
    */
-  virtual SearchResult solve(uint64_t start, uint64_t goal = SOLVED_STATE) const = 0;
+  virtual SearchResult solve(uint64_t start,
+                             uint64_t goal = SOLVED_STATE) const = 0;
 
-  const std::vector<Move>& moves() const { return moves_; }
+  const std::vector<Move> &moves() const { return moves_; }
 
 protected:
   std::vector<Move> moves_;
