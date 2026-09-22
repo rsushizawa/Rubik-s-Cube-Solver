@@ -1,14 +1,14 @@
 #include "raylib.h"
-#include "../include/CubeRenderer.h"
-#include "../include/State.h"
-#include "../include/Transition.h"
-#include "../include/BfsSolver.h"
-#include "../include/Solve.h"
-#include "../include/Animation.h"
-#include "../include/DfsSolver.h"
+#include "../include/CubeRenderer.hpp"
+#include "../include/State.hpp"
+#include "../include/Transition.hpp"
+#include "../include/BfsSolver.hpp"
+#include "../include/AStarSolver.hpp"
 
-#include <deque>
-#include <string>
+static const Move& move_by_name(const std::string& name) {
+    for (const Move& m : ALL_MOVES) if (name == m.name) return m;
+    return ALL_MOVES[0];  // unreachable: solver only ever emits names from ALL_MOVES
+}
 
 static const Vector3 SLOT_POSITIONS[8] = {
     {-0.52f,  0.52f,  0.52f}, { 0.52f,  0.52f,  0.52f},
@@ -16,29 +16,6 @@ static const Vector3 SLOT_POSITIONS[8] = {
     {-0.52f, -0.52f,  0.52f}, { 0.52f, -0.52f,  0.52f},
     {-0.52f, -0.52f, -0.52f}, { 0.52f, -0.52f, -0.52f}
 };
-
-// Function to apply Moves to a CubeLogicState (returns State)
-State applyMoves(State state, const std::vector<std::string>& moveNames, const std::vector<Move>&       
-  allMoves) {                                                                                               
-        for (const std::string& name : moveNames) {                                                         
-            for (const Move& m : allMoves) {                                                                
-                if (m.name == name) {                                                                       
-                    state = transition(state, m);                                                           
-                    break;                                                                                  
-                }                                                                                           
-            }                                                                                               
-        }                                                                                                   
-        return state;                                                                                       
-}
-
-void executeMove(const Move& m, State& logicState, CubeState& renderState, CubeAnimator& animator) {    
-    if (animator.enabled) {
-        animator.start(m);                                                                              
-    } else {
-        logicState = transition(logicState, m);
-        UpdateCubeFromLogic(logicState, renderState);
-    }                                                                                                   
-}             
 
 int main() {
     InitWindow(1280, 720, "Renderizador Cubo 2x2");
@@ -55,158 +32,96 @@ int main() {
     CubeState cubeRender = InitCubeRenderState();
     UpdateCubeFromLogic(cubeLogicState, cubeRender);
 
-    // ================ Movimentos Permitidos (Checar com 6 ou com todos) ===================
-    //std::vector<Move> allMoves(std::begin(ALL_MOVES), std::end(ALL_MOVES));
-    std::vector<Move> allMoves(std::begin(THREE_ADJACENT_MOVES), std::end(THREE_ADJACENT_MOVES));              
+    std::vector<Move> allMoves(std::begin(ALL_MOVES), std::end(ALL_MOVES));
+    BfsSolver bfsSolver(allMoves);
+    AStarSolver aStarSolver(allMoves);
+    const int SOLVER_COUNT = 2;
+    CubeSolver* solvers[SOLVER_COUNT] = { &bfsSolver, &aStarSolver };
+    const char* solverNames[SOLVER_COUNT] = { "BFS", "A*" };
 
-    // Create an instance for solvers
-    BfsSolver Bfs(allMoves);
-    DfsSolver Dfs(allMoves);
-
-    // Armazena ultima solução
-    SearchResult lastResult;
-
-    // Estado atual da animação
-    CubeAnimator animator;
-    
-    // Fila de movimentos para animar (se ativo)
-    std::deque<Move> solveSteps;
-    int currentStep = 0;
-
-    bool autoPlay = false;
+    enum class SolvePhase { None, Choosing, Playing };
+    SolvePhase phase = SolvePhase::None;
+    SearchResult candidates[SOLVER_COUNT];
+    SearchResult solution;   // the one the user picked, mid-playback
+    std::vector<std::string> solutionSteps;  // solution.moves, copied for playback
+    std::size_t solveStep = 0;
+    float stepTimer = 0.0f;
+    const float STEP_INTERVAL = 0.35f;  // seconds between animated solve moves
+    // Kept small on purpose: with per-expansion logging on, BFS's expanded
+    // node count (and log line count) grows combinatorially past ~7 moves --
+    // see the terminal output if you raise this.
+    const int SCRAMBLE_LENGTH = 6;
 
     SetTargetFPS(60);
 
     while (!WindowShouldClose()) {
-        UpdateCamera(&camera, CAMERA_ORBITAL);
-
-        // Animation Update (verifica se animação está ativada)
-        if(animator.active){
-            // Realiza atualização da animação (Cuberender)
-            if(animator.update(cubeRender)){
-                // Quando finaliza a animação atualiza o estado lógico com o movimento realizado
-                cubeLogicState = transition(cubeLogicState, animator.currentMove);
-                UpdateCubeFromLogic(cubeLogicState, cubeRender);
-
-                if (autoPlay) {
-                    if (currentStep < (int)solveSteps.size()) {
-                        executeMove(solveSteps[currentStep], cubeLogicState, cubeRender, animator);             
-                        currentStep++;
-                    } else {
-                        autoPlay = false; // Fim da lista                                              
-                    }
+        // --- Face turns: U D L R F B  (hold SHIFT for the inverse) ---
+        bool prime = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+        const struct { int key; const Move* clockwise; const Move* counterClockwise; } faceKeyBindings[] = {
+            { KEY_U, &MOVE_U, &MOVE_Up }, { KEY_D, &MOVE_D, &MOVE_Dp },
+            { KEY_L, &MOVE_L, &MOVE_Lp }, { KEY_R, &MOVE_R, &MOVE_Rp },
+            { KEY_F, &MOVE_F, &MOVE_Fp }, { KEY_B, &MOVE_B, &MOVE_Bp },
+        };
+        if (phase == SolvePhase::None) {
+            for (const auto& binding : faceKeyBindings) {
+                if (IsKeyPressed(binding.key)) {
+                    const Move& applied = prime ? *binding.counterClockwise : *binding.clockwise;
+                    TraceLog(LOG_INFO, "TURN: %s", applied.name);
+                    cubeLogicState = transition(cubeLogicState, applied);
+                    UpdateCubeFromLogic(cubeLogicState, cubeRender);
                 }
             }
         }
 
-        // Input do usuário apenas quando não há animação
-        if(!animator.active){
-            // --- Face turns: U D L R F B  (hold SHIFT for the inverse) ---
-            bool prime = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
-            const struct { int key; const Move* clockwise; const Move* counterClockwise; } faceKeyBindings[] = {
-                { KEY_U, &MOVE_U, &MOVE_Up }, { KEY_D, &MOVE_D, &MOVE_Dp },
-                { KEY_L, &MOVE_L, &MOVE_Lp }, { KEY_R, &MOVE_R, &MOVE_Rp },
-                { KEY_F, &MOVE_F, &MOVE_Fp }, { KEY_B, &MOVE_B, &MOVE_Bp },
-            };
+        // --- Scramble: X applies SCRAMBLE_LENGTH random moves at once. ---
+        if (IsKeyPressed(KEY_X) && phase == SolvePhase::None) {
+            cubeLogicState = scramble(cubeLogicState, allMoves, SCRAMBLE_LENGTH);
+            UpdateCubeFromLogic(cubeLogicState, cubeRender);
+            TraceLog(LOG_INFO, "SCRAMBLE: %d moves", SCRAMBLE_LENGTH);
+        }
 
-            for (const auto& binding : faceKeyBindings) {
-                if (IsKeyPressed(binding.key)) {
-                    Move move = prime ? *binding.counterClockwise : *binding.clockwise;
-                    executeMove(move, cubeLogicState, cubeRender, animator);
-                    
-                    // Se usuário executar movimento, limpa a fila de soluções
-                    solveSteps.clear();
-                    currentStep = 0;
-
-                    //cubeLogicState = transition(cubeLogicState, prime ? *binding.counterClockwise : *binding.clockwise);
-                    //UpdateCubeFromLogic(cubeLogicState, cubeRender);
+        // --- Solve: SPACE runs each solver on the current state and shows
+        // their results; press 1/2 to pick one and watch it play back one
+        // move per STEP_INTERVAL, or ESC to cancel. ---
+        if (IsKeyPressed(KEY_SPACE) && phase == SolvePhase::None) {
+            for (int i = 0; i < SOLVER_COUNT; ++i) {
+                TraceLog(LOG_INFO, "SOLVE[%s]: searching...", solverNames[i]);
+                candidates[i] = solvers[i]->solve(cubeLogicState);
+                if (candidates[i].found) {
+                    TraceLog(LOG_INFO, "SOLVE[%s]: %s (%d moves, %llu nodes expanded)",
+                             solverNames[i], candidates[i].notation().c_str(),
+                             candidates[i].depth, (unsigned long long)candidates[i].expanded);
+                } else {
+                    TraceLog(LOG_WARNING, "SOLVE[%s]: no solution found within depth limit", solverNames[i]);
                 }
             }
-
-            if (IsKeyPressed(KEY_A)) {                                                                  
-                animator.enabled = !animator.enabled;                                                   
+            phase = SolvePhase::Choosing;
+        }
+        if (phase == SolvePhase::Choosing) {
+            if (IsKeyPressed(KEY_ESCAPE)) {
+                phase = SolvePhase::None;
             }
-
-            // Scrambles the Cube
-            if(IsKeyPressed(KEY_S)){
-                // Limpa a fila de solução
-                solveSteps.clear();
-                currentStep = 0;
-
-                // Vetor com as rotações aleatórias (Seria interssante definir o número do scramble aqui)
-                std::vector<std::string> scrambleMoves = scramble(allMoves, 4);
-                cubeLogicState = applyMoves(cubeLogicState, scrambleMoves, allMoves);
+            for (int i = 0; i < SOLVER_COUNT; ++i) {
+                if (IsKeyPressed(KEY_ONE + i) && candidates[i].found) {
+                    TraceLog(LOG_INFO, "PICKED: %s", solverNames[i]);
+                    solution = candidates[i];
+                    solutionSteps = solution.moves;
+                    solveStep = 0;
+                    stepTimer = 0.0f;
+                    phase = solutionSteps.empty() ? SolvePhase::None : SolvePhase::Playing;
+                }
+            }
+        }
+        if (phase == SolvePhase::Playing) {
+            stepTimer += GetFrameTime();
+            if (stepTimer >= STEP_INTERVAL) {
+                stepTimer = 0.0f;
+                const std::string& name = solutionSteps[solveStep];
+                TraceLog(LOG_INFO, "MOVE %d/%d: %s", (int)solveStep + 1, (int)solutionSteps.size(), name.c_str());
+                cubeLogicState = transition(cubeLogicState, move_by_name(name));
                 UpdateCubeFromLogic(cubeLogicState, cubeRender);
-            }
-
-            // Soluciona o cubo com BFS
-            if (IsKeyPressed(KEY_N)) {                                                              
-                SearchResult result = Bfs.solve(cubeLogicState.full_state);                          
-                solveSteps.clear();
-                currentStep = 0;                                                                      
-                                                                                                            
-                if (result.found) {
-                    // Convert move names from result into Move structs=
-                    for (const std::string& name : result.moves) {
-                        for (const Move& m : allMoves) {
-                            if (m.name == name) {
-                                solveSteps.push_back(m);
-                                break;
-                            }                                                                           
-                        }                                                                               
-                    }
-                }
-            }
-
-            if (IsKeyPressed(KEY_M)) {                                                              
-                SearchResult result = Dfs.solve(cubeLogicState.full_state);                          
-                solveSteps.clear();
-                currentStep = 0;                                                                      
-                                                                                                            
-                if (result.found) {
-                    // Convert move names from result into Move structs=
-                    for (const std::string& name : result.moves) {
-                        for (const Move& m : allMoves) {
-                            if (m.name == name) {
-                                solveSteps.push_back(m);
-                                break;
-                            }                                                                           
-                        }                                                                               
-                    }
-                }
-            }
-
-            if (IsKeyPressed(KEY_RIGHT) && currentStep < (int)solveSteps.size()) {
-                executeMove(solveSteps[currentStep], cubeLogicState, cubeRender, animator);
-                currentStep++;
-            }
-
-            if (IsKeyPressed(KEY_LEFT) && currentStep > 0) {     
-                // Returns to the last step                                                    
-                currentStep--;
-                // Get currentStep Move
-                const Move& moveToUndo = solveSteps[currentStep];
-
-                // Find moveToUndo in allMoves and grab its opposite (i ^ 1)                                        
-                for (int i = 0; i < (int)allMoves.size(); ++i) {
-                    if (allMoves[i].name == moveToUndo.name) {
-                    Move undoMove = allMoves[i ^ 1]; // opposite move calculate from table
-
-                    // Apply UndoMove
-                    executeMove(undoMove, cubeLogicState, cubeRender, animator);
-                    break;
-                    }
-                }                                                                                                   
-            }
-
-            if (IsKeyPressed(KEY_ENTER) && !solveSteps.empty()) {                                                   
-                autoPlay = !autoPlay; // Toggle play / pause
-
-                // If starting and idle, trigger the first move
-                if (autoPlay && !animator.active && currentStep < (int)solveSteps.size()) {                         
-                    executeMove(solveSteps[currentStep], cubeLogicState, cubeRender, animator);                     
-                    currentStep++;
-                }
+                ++solveStep;
+                if (solveStep >= solutionSteps.size()) phase = SolvePhase::None;
             }
         }
 
@@ -222,15 +137,26 @@ int main() {
             EndMode3D();
 
             for (int slot = 0; slot < 8; slot++) {
-                Vector2 screenPos = GetWorldToScreen(SLOT_POSITIONS[slot], camera);
-                DrawText(TextFormat("%d", slot), (int)screenPos.x - 6, (int)screenPos.y - 10, 22, BLACK);
+                    Vector2 screenPos = GetWorldToScreen(SLOT_POSITIONS[slot], camera);
+                    DrawText(TextFormat("%d", slot), (int)screenPos.x - 6, (int)screenPos.y - 10, 22, BLACK);
+            }
+            DrawFPS(10, 10);
+            DrawText("U D L R F B turn  |  SHIFT = inverse  |  X = scramble  |  SPACE = solve", 10, 35, 18, LIGHTGRAY);
+            if (phase == SolvePhase::Choosing) {
+                DrawText("pick a solution: 1/2  |  ESC = cancel", 10, 58, 18, LIGHTGRAY);
+                for (int i = 0; i < SOLVER_COUNT; ++i) {
+                    const char* status = !candidates[i].found ? "no solution"
+                                        : TextFormat("%d moves: %s", candidates[i].depth,
+                                                      candidates[i].notation().c_str());
+                    DrawText(TextFormat("%d) %s -- %s", i + 1, solverNames[i], status),
+                              10, 81 + i * 20, 18, LIGHTGRAY);
+                }
+            } else if (phase == SolvePhase::Playing) {
+                DrawText(TextFormat("playing: %s (%d/%d)", solution.notation().c_str(),
+                                     (int)solveStep, (int)solutionSteps.size()),
+                          10, 58, 18, LIGHTGRAY);
             }
 
-            DrawFPS(10, 10);
-            DrawText("U D L R F B turn  |  SHIFT = inverse", 10, 35, 18, LIGHTGRAY);
-            DrawText("Press N to solve with BFS\nPress M to solve with DFS\nUse Arrow Keys to see the steps!", GetScreenWidth() - 500, 10, 20, WHITE);
-            DrawText("S = Scramble", 10, 80, 30, WHITE);
-            DrawText("Enter = Autoplay", 10, 140, 30, WHITE);
         EndDrawing();
     }
 
