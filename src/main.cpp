@@ -5,6 +5,7 @@
 #include "../include/BfsSolver.h"
 #include "../include/Solve.h"
 #include "../include/Animation.h"
+#include "../include/DfsSolver.h"
 
 #include <deque>
 #include <string>
@@ -54,13 +55,13 @@ int main() {
     CubeState cubeRender = InitCubeRenderState();
     UpdateCubeFromLogic(cubeLogicState, cubeRender);
 
-    
-
     // ================ Movimentos Permitidos (Checar com 6 ou com todos) ===================
-    std::vector<Move> allMoves(std::begin(ALL_MOVES), std::end(ALL_MOVES));
+    //std::vector<Move> allMoves(std::begin(ALL_MOVES), std::end(ALL_MOVES));
+    std::vector<Move> allMoves(std::begin(THREE_ADJACENT_MOVES), std::end(THREE_ADJACENT_MOVES));              
 
     // Create an instance for solvers
     BfsSolver Bfs(allMoves);
+    DfsSolver Dfs(allMoves);
 
     // Armazena ultima solução
     SearchResult lastResult;
@@ -138,8 +139,27 @@ int main() {
                 UpdateCubeFromLogic(cubeLogicState, cubeRender);
             }
 
-            if (IsKeyPressed(KEY_SPACE)) {                                                              
+            // Soluciona o cubo com BFS
+            if (IsKeyPressed(KEY_N)) {                                                              
                 SearchResult result = Bfs.solve(cubeLogicState.full_state);                          
+                solveSteps.clear();
+                currentStep = 0;                                                                      
+                                                                                                            
+                if (result.found) {
+                    // Convert move names from result into Move structs=
+                    for (const std::string& name : result.moves) {
+                        for (const Move& m : allMoves) {
+                            if (m.name == name) {
+                                solveSteps.push_back(m);
+                                break;
+                            }                                                                           
+                        }                                                                               
+                    }
+                }
+            }
+
+            if (IsKeyPressed(KEY_M)) {                                                              
+                SearchResult result = Dfs.solve(cubeLogicState.full_state);                          
                 solveSteps.clear();
                 currentStep = 0;                                                                      
                                                                                                             
@@ -208,7 +228,7 @@ int main() {
 
             DrawFPS(10, 10);
             DrawText("U D L R F B turn  |  SHIFT = inverse", 10, 35, 18, LIGHTGRAY);
-            DrawText("Press Space to solve with BFS\nUse Arrow Keys to see the steps!", GetScreenWidth() - 500, 10, 20, WHITE);
+            DrawText("Press N to solve with BFS\nPress M to solve with DFS\nUse Arrow Keys to see the steps!", GetScreenWidth() - 500, 10, 20, WHITE);
             DrawText("S = Scramble", 10, 80, 30, WHITE);
             DrawText("Enter = Autoplay", 10, 140, 30, WHITE);
         EndDrawing();
