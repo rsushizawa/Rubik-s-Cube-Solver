@@ -1,33 +1,34 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <random>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "State.hpp"
 #include "Transition.hpp"
 
 /**
- * Generate a random scramble; never turns the same face twice in a row.
- *
- * Parameters
+ * Parâmetros
  * ----------
  * moves: const std::vector<Move>&
- *     Moves the scramble may draw from, e.g. ALL_MOVES.
+ *     Movimentos dos quais o embaralhamento pode sortear, ex.: ALL_MOVES.
  * length: int
- *     Number of moves to generate.
+ *     Quantidade de movimentos a gerar.
  * seed: uint32_t
- *     RNG seed (default is nondeterministic).
+ *     Semente do gerador aleatório (padrão é não-determinístico).
  *
- * Returns
+ * Retorna
  * -------
  * std::vector<std::string>
- *     `length` move names.
+ *     `length` nomes de moviment
  */
 inline std::vector<std::string>
 scramble(const std::vector<Move> &moves, int length,
          uint32_t seed = std::random_device{}()) {
+
   std::mt19937 rng(seed);
   std::uniform_int_distribution<int> pick(0, (int)moves.size() - 1);
   std::vector<std::string> result;
@@ -43,17 +44,16 @@ scramble(const std::vector<Move> &moves, int length,
 }
 
 /**
- * Outcome of a CubeSolver search.
- *
- * Attributes
+ * Atributos
  * ----------
  * found: bool
- *     Whether a path from start to goal was found.
+ *     Se um caminho de start até goal foi encontrado.
  * moves: std::vector<std::string>
- *     Move names, applied left-to-right: start --moves--> goal.
+ *     Nomes dos movimentos, aplicados da esquerda para a direita:
+ *     start --moves--> goal.
  * expanded: std::uint64_t
- *     Nodes expanded during the search (statistic, not used for
- *     correctness).
+ *     Nós expandidos durante a busca (estatística, não usada para a
+ *     corretude do resultado).
  */
 struct SearchResult {
   bool found = false;
@@ -61,12 +61,13 @@ struct SearchResult {
   std::uint64_t expanded = 0;
 
   /**
-   * Render the move list as a single space-separated string.
+   * Renderiza a lista de movimentos como uma única string separada por
+   * espaços.
    *
-   * Returns
+   * Retorna
    * -------
    * std::string
-   *     The moves in order, e.g. "R U R' U'".
+   *     Os movimentos em ordem, ex.: "R U R' U'".
    */
   std::string notation() const {
     std::string text;
@@ -80,26 +81,23 @@ struct SearchResult {
 };
 
 /**
- * Replay a solver's result from `start` and confirm it actually reaches
- * `goal` -- solve() itself never checks this; a caller that wants the
- * guarantee calls this explicitly.
- *
- * Parameters
+ * Parâmetros
  * ----------
  * moves: const std::vector<Move>&
- *     The move set result.moves' names are drawn from.
+ *     O conjunto de movimentos do qual os nomes em result.moves foram tirados.
  * start: uint64_t
- *     State the solver was asked to solve from.
+ *     Estado a partir do qual o solucionador foi chamado.
  * result: const SearchResult&
- *     Its return value.
+ *     O valor retornado por ele.
  * goal: uint64_t
- *     Target passed to solve() (default SOLVED_STATE).
+ *     Alvo passado para solve() (padrão SOLVED_STATE).
  *
- * Returns
+ * Retorna
  * -------
  * bool
- *     True if replaying result.moves from start reaches goal (or, when
- *     goal is SOLVED_STATE, any of its 24 rotations -- see is_goal()).
+ *     Verdadeiro se reproduzir result.moves a partir de start alcança
+ *     goal (ou, quando goal é SOLVED_STATE, qualquer uma de suas 24
+ *     rotações -- ver is_goal()).
  */
 inline bool verify_solution(const std::vector<Move> &moves, uint64_t start,
                             const SearchResult &result,
@@ -122,34 +120,85 @@ inline bool verify_solution(const std::vector<Move> &moves, uint64_t start,
   return is_goal(state, goal);
 }
 
+struct Node {
+  uint64_t state;
+  int depth;
+  uint64_t parent;
+  int moveIndex;
+};
+
+struct Link {
+  uint64_t parent;
+  int moveIndex;
+};
+
+typedef std::unordered_map<uint64_t, Link> ParentLinks;
+
+inline std::vector<std::string> trace_path(const ParentLinks &parentOf,
+                                           const std::vector<Move> &moves,
+                                           uint64_t start, uint64_t goal) {
+  std::vector<std::string> path;
+  for (uint64_t state = goal; state != start;) {
+    const Link &link = parentOf.at(state);
+    path.push_back(moves[link.moveIndex].name);
+    state = link.parent;
+  }
+  std::reverse(path.begin(), path.end());
+  return path;
+}
+
 /**
- * Interface every search strategy implements.
+ * Função Sucessora: todo estado a um movimento de distância de
+ * `node.state`.
+ *
+ * Parâmetros
+ * ----------
+ * node: const Node&
+ *     O estado do qual gerar sucessores.
+ * moves: const std::vector<Move>&
+ *     Movimentos pelos quais um sucessor pode ser alcançado.
+ *
+ * Retorna
+ * -------
+ * std::vector<Node>
+ *     Um Node por movimento, na mesma ordem de `moves`.
  */
+inline std::vector<Node> generate_successors(const Node &node,
+                                             const std::vector<Move> &moves) {
+  std::vector<Node> successors;
+  successors.reserve(moves.size());
+  for (std::size_t i = 0; i < moves.size(); ++i) {
+    uint64_t next = apply_move(node.state, moves[i]);
+    successors.push_back(Node{next, node.depth + 1, node.state, (int)i});
+  }
+  return successors;
+}
+
 class CubeSolver {
 public:
   /**
-   * Parameters
+   * Parâmetros
    * ----------
    * moves: std::vector<Move>
-   *     Moves this solver's search is allowed to use.
+   *     Movimentos que a busca deste solucionador pode usar.
    */
   explicit CubeSolver(std::vector<Move> moves) : moves_(std::move(moves)) {}
   virtual ~CubeSolver() = default;
 
   /**
-   * Search for a path from `start` to `goal`.
+   * Busca um caminho de `start` até `goal`.
    *
-   * Parameters
+   * Parâmetros
    * ----------
    * start: uint64_t
-   *     Starting state.
+   *     Estado inicial.
    * goal: uint64_t
-   *     Target state (default is SOLVED_STATE).
+   *     Estado alvo (padrão é SOLVED_STATE).
    *
-   * Returns
+   * Retorna
    * -------
    * SearchResult
-   *     The outcome of the search; see SearchResult.
+   *     O resultado da busca; ver SearchResult.
    */
   virtual SearchResult solve(uint64_t start,
                              uint64_t goal = SOLVED_STATE) const = 0;
