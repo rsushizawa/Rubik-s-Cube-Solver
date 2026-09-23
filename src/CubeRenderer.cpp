@@ -1,4 +1,4 @@
-#include "../include/CubeRenderer.h"
+#include "../include/CubeRenderer.hpp"
 #include <cstdint>
 #include <raylib.h>
 #include <rlgl.h>
@@ -18,7 +18,7 @@ static const CubieColor CubieColors[8] = {
 };
 
 // Tabela de posição dos cubinhos
-static const Vector3 SLOT_POSITIONS[8] = {
+const Vector3 SLOT_POSITIONS[8] = {
     {-0.52f,  0.52f,  0.52f}, { 0.52f,  0.52f,  0.52f},
     {-0.52f,  0.52f, -0.52f}, { 0.52f,  0.52f, -0.52f},
     {-0.52f, -0.52f,  0.52f}, { 0.52f, -0.52f,  0.52f},

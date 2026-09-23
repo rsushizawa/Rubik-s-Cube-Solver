@@ -4,8 +4,6 @@
 #include "raylib.h"
 #include <array>
 
-using namespace std;
-
 struct CubieData {
   Vector3 position;     // Posição do cubinho
   Vector3 rotationAxis; // Eixo de rotação
@@ -14,12 +12,12 @@ struct CubieData {
   // Cores das 6 faces na ordem:
   // [0]: Frente (+Z), [1]: Trás (-Z), [2]: Cima (+Y),
   // [3]: Baixo (-Y),  [4]: Esquerda (-X), [5]: Direita (+X)
-  array<Color, 6> faceColors;
+  std::array<Color, 6> faceColors;
 };
 
 // Conjunto completo do cubo contendo os 8 cubinhos.
 struct CubeState {
-  array<CubieData, 8> cubies;
+  std::array<CubieData, 8> cubies;
 };
 
 CubeState InitCubeRenderState();
@@ -27,6 +25,7 @@ CubeState InitCubeRenderState();
 // Conversão do estado lógico para o estado de renderização (CubeState)
 void UpdateCubeFromLogic(const State &logicState, CubeState &cube);
 
-void DrawCubie(const CubeState &cube, float cubieSize = 1.0f);
-
 void RenderCube(CubeState cube, float cubie_size);
+
+// Centro de cada posição (slot) no espaço 3D, na ordem de State::slots.
+extern const Vector3 SLOT_POSITIONS[8];
