@@ -2,19 +2,22 @@
 #include <cstdint>
 #include <functional>
 
-using namespace std;
-
 struct State {
   union {
     uint64_t full_state;
     uint8_t slots[8];
   };
 
-  State(uint64_t val) { full_state = val; }
+  constexpr State() : full_state(0) {}
+  constexpr State(uint64_t val) : full_state(val) {}
 };
 
 inline bool operator==(const State &a, const State &b) {
   return a.full_state == b.full_state;
+}
+
+inline bool operator!=(const State &a, const State &b) {
+  return a.full_state != b.full_state;
 }
 
 template <> struct std::hash<State> {
@@ -23,4 +26,4 @@ template <> struct std::hash<State> {
   }
 };
 
-inline constexpr uint64_t SOLVED_STATE = 0x1C1814100C080400ULL;
+inline constexpr State SOLVED_STATE{0x1C1814100C080400ULL};

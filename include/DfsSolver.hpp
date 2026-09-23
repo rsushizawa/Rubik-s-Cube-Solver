@@ -1,102 +1,99 @@
-#pragma once 
+#pragma once
 
-#include <exception>
 #include <stack>
 #include <unordered_map>
-#include <algorithm>
 
-#include "Solve.h"
-#include "Transition.h"
+#include "Solve.hpp"
 
-// Depth first search Solver
 class DfsSolver : public CubeSolver {
 public:
-    using CubeSolver::CubeSolver;
+  /**
+   * Parâmetros
+   * ----------
+   * moves: std::vector<Move>
+   *     Movimentos que a busca pode usar.
+   * limit: int
+   *     Profundidade máxima explorada. 14 é o número de Deus do 2x2 em
+   *     giros de 90 graus: com os 12 movimentos, todo estado tem solução
+   *     dentro desse limite.
+   */
+  explicit DfsSolver(std::vector<Move> moves, int limit = 14)
+      : CubeSolver(std::move(moves)), limit_(limit) {}
 
-    // Parametros: start (estado inicial), goal(estado alvo)
-    // Retorno: SearchResult
-    SearchResult solve(uint64_t start, uint64_t goal = SOLVED_STATE) const override {
-        SearchResult result;
+  int limit() const { return limit_; }
+  void set_limit(int limit) { limit_ = limit; }
 
-        // Verifica se o start faz parte do Goal
-        if(is_goal(start, goal)){
-            result.found = true;
-            return result;
-        }
+  SearchResult solve(State start, State goal = SOLVED_STATE) const override {
+    return solve_limited(start, goal, limit_);
+  }
 
-        // Cria a pilha para o DFS
-        std::stack<uint64_t> frontier;
-        frontier.push(start);
-
-        // Cria o hashmap dos estados já visitado
-        ParentLinks parentOf;
-        parentOf.reserve(1u << 20);
-        parentOf.emplace(start, Link{start, -1, 0});
-
-        // Continua enquanto a pilha possuir algum elemento
-        while(!frontier.empty()){
-            // Desempilha o estado no topo
-            uint64_t current = frontier.top();
-            frontier.pop();
-
-            // Conta a expansão
-            ++result.expanded;
-            
-            int currentDepth = parentOf.at(current).depth;
-
-            // Testa o limite de profundidade
-            if(currentDepth >= 11){
-                continue;
-            }
-
-            for(std::size_t i = 0; i < moves_.size(); ++i){
-                // Aplicada o próximo estado de acordo com o movimento
-                uint64_t nextState = apply_move(current, moves_[i]);
-                int nextDepth = currentDepth + 1;
-                
-                // Verifica se o estado já foi visitado em uma profundidade menor
-                auto it = parentOf.find(nextState);
-            
-                // Se o caminho registrado for menor ou igual ao que estamos verificando:
-                if(it != parentOf.end() && it->second.depth <= nextDepth || nextDepth > 14){
-                    continue; // Cortamos o ramo, por termos encontrado um caminho menor.
-                } 
-
-                // Grava o estado no hashmap
-                parentOf[nextState] = Link{current, (int)i, nextDepth};
-
-                // Verifica se esse novo estado é o final
-                if(is_goal(nextState, goal)){
-                    result.found = true; 
-                    result.moves = trace_path(parentOf, start, nextState);
-                    return result;
-                }
-
-                // Adiciona o próximo estado na pilha
-                frontier.push(nextState);
-            }
+  /**
+   * A busca em profundidade limitada em si, com o limite passado
+   * explicitamente -- usada por solve() e pelo IddfsSolver, que a chama
+   * com limites crescentes.
+   *
+   * Parâmetros
+   * ----------
+   * start: State
+   *     Estado inicial.
+   * goal: State
+   *     Estado alvo.
+   * limit: int
+   *     Profundidade máxima explorada.
+   *
+   * Retorna
+   * -------
+   * SearchResult
+   *     A solução, se existir uma com até `limit` movimentos.
+   */
+  SearchResult solve_limited(State start, State goal, int limit) const {
+    SearchResult result;
+    if (evaluate_state(start, goal)) {
+      result.found = true;
+      return result;
     }
-        
-    return result;
 
-}
+    // 1. Adicionar estado na pilha
+    std::stack<Node> pilha;
+    pilha.push(Node{start, 0, start, -1});
+
+    ParentLinks parentOf;
+    std::unordered_map<State, int> bestDepth;
+
+    // 2. Enquanto a pilha não estiver vazia
+    while (!pilha.empty()) {
+      // 2.1 Remover o estado mais recente da pilha
+      Node current = pilha.top();
+      pilha.pop();
+      auto seen = bestDepth.find(current.state);
+      if (seen != bestDepth.end() && seen->second <= current.depth)
+        continue; // já expandido por um caminho tão curto quanto este
+      bestDepth[current.state] = current.depth;
+      parentOf[current.state] = Link{current.parent, current.moveIndex};
+      ++result.expanded;
+
+      // 2.2 Avaliar estado
+      if (evaluate_state(current.state, goal)) {
+        // 2.2.1 SE estado final -> mostrar solução e encerrar
+        result.found = true;
+        result.moves = trace_path(parentOf, moves_, start, current.state);
+        return result;
+      }
+
+      // 2.3 Adicionar estados seguintes no topo da pilha, até o limite
+      if (current.depth >= limit)
+        continue;
+      for (const Node &next : generate_successors(current, moves_)) {
+        auto best = bestDepth.find(next.state);
+        if (best == bestDepth.end() || next.depth < best->second)
+          pilha.push(next);
+      }
+    }
+
+    // 3. Retornar "Sem solução"
+    return result;
+  }
 
 private:
-    // Estrutura para armazenar estados, movimentos e profundidade (DFS)
-    struct Link { uint64_t state; int moveIndex; int depth; };
-    
-    using ParentLinks = std::unordered_map<uint64_t, Link>;
-    
-    // Calcula o caminho da solução
-    std::vector<std::string> trace_path(const ParentLinks& parentOf,
-                                      uint64_t start, uint64_t goal) const {
-    std::vector<std::string> path;
-    for (uint64_t state = goal; state != start; ) {
-      const Link& link = parentOf.at(state);
-      path.push_back(moves_[link.moveIndex].name);
-      state = link.state;
-    }
-    std::reverse(path.begin(), path.end());
-    return path;
-  }
+  int limit_;
 };

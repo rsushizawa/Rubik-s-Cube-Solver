@@ -3,6 +3,8 @@
 #include "State.hpp"
 #include <algorithm>
 #include <cstdint>
+#include <stdexcept>
+#include <string>
 #include <vector>
 /**
  * Um giro de 90 graus de uma face.
@@ -80,23 +82,68 @@ inline State transition(State s, const int cycle[4], const int twist[4]) {
 inline State transition(State s, const Move &m) {
   return transition(s, m.cycle, m.twist);
 }
-inline uint64_t apply_move(uint64_t s, const Move &m) {
-  return transition(State(s), m).full_state;
+
+/**
+ * O movimento com esta notação, entre os 12 de ALL_MOVES.
+ *
+ * Parâmetros
+ * ----------
+ * name: const std::string&
+ *     Notação do movimento, ex.: "R" ou "U'".
+ *
+ * Retorna
+ * -------
+ * const Move&
+ *     O movimento. Lança std::invalid_argument se o nome não existe.
+ */
+inline const Move &find_move(const std::string &name) {
+  for (const Move &m : ALL_MOVES)
+    if (name == m.name)
+      return m;
+  throw std::invalid_argument("movimento desconhecido: '" + name + "'");
 }
 
-inline const std::vector<uint64_t> &solved_orbit() {
-  static const std::vector<uint64_t> orbit = [] {
-    typedef uint64_t (*Rotation)(uint64_t);
+/**
+ * O movimento que desfaz `name`: "R" <-> "R'".
+ */
+inline const Move &inverse_move(const std::string &name) {
+  bool prime = !name.empty() && name.back() == '\'';
+  return find_move(prime ? name.substr(0, name.size() - 1) : name + "'");
+}
+
+/**
+ * Aplica uma sequência de movimentos, em ordem, a partir de `s`.
+ *
+ * Parâmetros
+ * ----------
+ * s: State
+ *     Estado inicial.
+ * names: const std::vector<std::string>&
+ *     Notação de cada movimento, ex.: {"R", "U'"}.
+ *
+ * Retorna
+ * -------
+ * State
+ *     O estado depois de todos os movimentos.
+ */
+inline State apply_moves(State s, const std::vector<std::string> &names) {
+  for (const std::string &name : names)
+    s = transition(s, find_move(name));
+  return s;
+}
+inline const std::vector<State> &solved_orbit() {
+  static const std::vector<State> orbit = [] {
+    typedef State (*Rotation)(State);
     const Rotation rotations[4] = {
-        [](uint64_t s) { return apply_move(apply_move(s, MOVE_R), MOVE_Lp); },
-        [](uint64_t s) { return apply_move(apply_move(s, MOVE_Rp), MOVE_L); },
-        [](uint64_t s) { return apply_move(apply_move(s, MOVE_U), MOVE_Dp); },
-        [](uint64_t s) { return apply_move(apply_move(s, MOVE_Up), MOVE_D); },
+        [](State s) { return transition(transition(s, MOVE_R), MOVE_Lp); },
+        [](State s) { return transition(transition(s, MOVE_Rp), MOVE_L); },
+        [](State s) { return transition(transition(s, MOVE_U), MOVE_Dp); },
+        [](State s) { return transition(transition(s, MOVE_Up), MOVE_D); },
     };
-    std::vector<uint64_t> result{SOLVED_STATE};
+    std::vector<State> result{SOLVED_STATE};
     for (std::size_t i = 0; i < result.size(); ++i) {
       for (Rotation rotate : rotations) {
-        uint64_t next = rotate(result[i]);
+        State next = rotate(result[i]);
         if (std::find(result.begin(), result.end(), next) == result.end())
           result.push_back(next);
       }
@@ -106,15 +153,15 @@ inline const std::vector<uint64_t> &solved_orbit() {
   return orbit;
 }
 
-inline std::vector<uint64_t> goal_states(uint64_t goal = SOLVED_STATE) {
+inline std::vector<State> goal_states(State goal = SOLVED_STATE) {
   if (goal == SOLVED_STATE)
     return solved_orbit();
   return {goal};
 }
 
-inline bool is_goal(uint64_t s, uint64_t goal = SOLVED_STATE) {
+inline bool is_goal(State s, State goal = SOLVED_STATE) {
   if (goal != SOLVED_STATE)
     return s == goal;
-  const std::vector<uint64_t> &orbit = solved_orbit();
+  const std::vector<State> &orbit = solved_orbit();
   return std::find(orbit.begin(), orbit.end(), s) != orbit.end();
 }

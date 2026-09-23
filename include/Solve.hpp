@@ -44,6 +44,36 @@ scramble(const std::vector<Move> &moves, int length,
 }
 
 /**
+ * O estado que o embaralhamento de `seed` produz a partir do cubo
+ * resolvido. A mesma seed (com o mesmo tamanho) sempre gera o mesmo
+ * estado -- é o que permite repetir a entrada para comparar solucionadores.
+ *
+ * Parâmetros
+ * ----------
+ * moves: const std::vector<Move>&
+ *     Movimentos dos quais o embaralhamento pode sortear.
+ * length: int
+ *     Quantidade de movimentos.
+ * seed: uint32_t
+ *     Semente do gerador aleatório.
+ * scrambleMoves: std::vector<std::string>*
+ *     Se não for nulo, recebe os movimentos sorteados.
+ *
+ * Retorna
+ * -------
+ * State
+ *     O estado embaralhado.
+ */
+inline State scrambled_state(const std::vector<Move> &moves, int length,
+                             uint32_t seed,
+                             std::vector<std::string> *scrambleMoves = nullptr) {
+  std::vector<std::string> names = scramble(moves, length, seed);
+  if (scrambleMoves)
+    *scrambleMoves = names;
+  return apply_moves(SOLVED_STATE, names);
+}
+
+/**
  * Atributos
  * ----------
  * found: bool
@@ -85,11 +115,11 @@ struct SearchResult {
  * ----------
  * moves: const std::vector<Move>&
  *     O conjunto de movimentos do qual os nomes em result.moves foram tirados.
- * start: uint64_t
+ * start: State
  *     Estado a partir do qual o solucionador foi chamado.
  * result: const SearchResult&
  *     O valor retornado por ele.
- * goal: uint64_t
+ * goal: State
  *     Alvo passado para solve() (padrão SOLVED_STATE).
  *
  * Retorna
@@ -99,17 +129,17 @@ struct SearchResult {
  *     goal (ou, quando goal é SOLVED_STATE, qualquer uma de suas 24
  *     rotações -- ver is_goal()).
  */
-inline bool verify_solution(const std::vector<Move> &moves, uint64_t start,
+inline bool verify_solution(const std::vector<Move> &moves, State start,
                             const SearchResult &result,
-                            uint64_t goal = SOLVED_STATE) {
+                            State goal = SOLVED_STATE) {
   if (!result.found)
     return false;
-  uint64_t state = start;
+  State state = start;
   for (const std::string &name : result.moves) {
     bool applied = false;
     for (const Move &m : moves) {
       if (name == m.name) {
-        state = apply_move(state, m);
+        state = transition(state, m);
         applied = true;
         break;
       }
@@ -121,30 +151,50 @@ inline bool verify_solution(const std::vector<Move> &moves, uint64_t start,
 }
 
 struct Node {
-  uint64_t state;
+  State state;
   int depth;
-  uint64_t parent;
+  State parent;
   int moveIndex;
 };
 
 struct Link {
-  uint64_t parent;
+  State parent;
   int moveIndex;
 };
 
-typedef std::unordered_map<uint64_t, Link> ParentLinks;
+typedef std::unordered_map<State, Link> ParentLinks;
 
 inline std::vector<std::string> trace_path(const ParentLinks &parentOf,
                                            const std::vector<Move> &moves,
-                                           uint64_t start, uint64_t goal) {
+                                           State start, State goal) {
   std::vector<std::string> path;
-  for (uint64_t state = goal; state != start;) {
+  for (State state = goal; state != start;) {
     const Link &link = parentOf.at(state);
     path.push_back(moves[link.moveIndex].name);
     state = link.parent;
   }
   std::reverse(path.begin(), path.end());
   return path;
+}
+
+/**
+ * Função Avaliadora
+ *
+ * Parâmetros
+ * ----------
+ * state: State
+ *     Estado a avaliar.
+ * goal: State
+ *     Estado alvo (padrão é SOLVED_STATE, ou seja, qualquer uma de suas
+ *     24 rotações do cubo inteiro).
+ *
+ * Retorna
+ * -------
+ * bool
+ *     Verdadeiro se `state` é final -- ver is_goal().
+ */
+inline bool evaluate_state(State state, State goal = SOLVED_STATE) {
+  return is_goal(state, goal);
 }
 
 /**
@@ -168,7 +218,7 @@ inline std::vector<Node> generate_successors(const Node &node,
   std::vector<Node> successors;
   successors.reserve(moves.size());
   for (std::size_t i = 0; i < moves.size(); ++i) {
-    uint64_t next = apply_move(node.state, moves[i]);
+    State next = transition(node.state, moves[i]);
     successors.push_back(Node{next, node.depth + 1, node.state, (int)i});
   }
   return successors;
@@ -186,13 +236,12 @@ public:
   virtual ~CubeSolver() = default;
 
   /**
-   * Busca um caminho de `start` até `goal`.
    *
    * Parâmetros
    * ----------
-   * start: uint64_t
+   * start: State
    *     Estado inicial.
-   * goal: uint64_t
+   * goal: State
    *     Estado alvo (padrão é SOLVED_STATE).
    *
    * Retorna
@@ -200,8 +249,7 @@ public:
    * SearchResult
    *     O resultado da busca; ver SearchResult.
    */
-  virtual SearchResult solve(uint64_t start,
-                             uint64_t goal = SOLVED_STATE) const = 0;
+  virtual SearchResult solve(State start, State goal = SOLVED_STATE) const = 0;
 
   const std::vector<Move> &moves() const { return moves_; }
 
