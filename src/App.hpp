@@ -113,6 +113,7 @@ private:
   void draw();
 
   void handle_seed_typing();
+  void handle_window_keys();
   void handle_solver_keys();
   void handle_face_turns();
   void handle_scramble_keys();
@@ -162,6 +163,7 @@ private:
   void draw_solutions() const;
   std::string run_label(int solver, bool numbered) const;
 
+  bool quit_ = false;
   Camera3D camera_{};
   float cameraYaw_ = 0.785f;
   float cameraPitch_ = 0.615f;

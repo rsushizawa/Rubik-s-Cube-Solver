@@ -21,18 +21,25 @@ constexpr int SEED_Y = 290, SEED_BOX_W = 380;
 constexpr int SCRAMBLE_LABEL_Y = 316, SCRAMBLE_Y = 340, SCRAMBLE_W = 380;
 constexpr int STATUS_Y = 430;
 
-constexpr int TABLE_X = 820, TABLE_Y = 20, TABLE_W = 460, TABLE_H = 190,
+constexpr int TABLE_Y = 20, TABLE_W = 460, TABLE_H = 190,
               TABLE_ROW = 26;
-constexpr int COL_TIME = 150, COL_MOVES = 260, COL_VISITED = 330;
+constexpr int COL_TIME = 150, COL_MOVES = 290, COL_VISITED = 350;
 
-constexpr int SOLUTIONS_Y = 470, SOLUTION_FIRST_ROW = 28, SOLUTION_ROW = 52;
+constexpr int SOLUTIONS_BOTTOM = 250, SOLUTION_FIRST_ROW = 28,
+              SOLUTION_ROW = 52;
 constexpr int SOLUTION_LABEL_X = 14, SOLUTION_CHIPS_X = 170,
-              SOLUTION_CHIPS_W = 900, SOLUTION_STEP_X = 1090;
+              SOLUTION_STEP_FROM_RIGHT = 190;
 
 constexpr int CHIP_TEXT = 20, CHIP_PAD_X = 8, CHIP_H = 28, CHIP_GAP = 6;
 
+int table_x() { return GetScreenWidth() - TABLE_W; }
+int solutions_y() { return GetScreenHeight() - SOLUTIONS_BOTTOM; }
+int solution_step_x() { return GetScreenWidth() - SOLUTION_STEP_FROM_RIGHT; }
+int solution_chips_w() {
+  return solution_step_x() - SOLUTION_CHIPS_X - 20;
+}
 int solution_row_y(int solver) {
-  return SOLUTIONS_Y + SOLUTION_FIRST_ROW + solver * SOLUTION_ROW;
+  return solutions_y() + SOLUTION_FIRST_ROW + solver * SOLUTION_ROW;
 }
 } // namespace layout
 
@@ -138,10 +145,12 @@ App::App()
 }
 
 void App::run() {
+  SetConfigFlags(FLAG_WINDOW_RESIZABLE);
   InitWindow(layout::SCREEN_W, layout::SCREEN_H, "Renderizador Cubo 2x2");
   SetExitKey(KEY_NULL);
+  ToggleBorderlessWindowed();
   SetTargetFPS(60);
-  while (!WindowShouldClose()) {
+  while (!WindowShouldClose() && !quit_) {
     handle_input();
     update();
     draw();
@@ -154,6 +163,7 @@ void App::handle_input() {
     handle_seed_typing();
     return;
   }
+  handle_window_keys();
   handle_solver_keys();
   handle_face_turns();
   handle_scramble_keys();
@@ -181,6 +191,13 @@ void App::handle_seed_typing() {
       apply_seed();
     }
   }
+}
+
+void App::handle_window_keys() {
+  if (IsKeyPressed(KEY_F11))
+    ToggleBorderlessWindowed();
+  if (IsKeyPressed(KEY_ESCAPE))
+    quit_ = true;
 }
 
 void App::handle_solver_keys() {
@@ -375,7 +392,7 @@ void App::collect_search() {
     SolverRun &run = results_.runs[i].emplace(out[k]);
     if (solvers_[i].limited)
       run.limit = solvers_[i].limited->limit();
-    TraceLog(LOG_INFO, "SOLVE[%s]: %s (%zu moves, %llu states visited, %.1f ms)",
+    TraceLog(LOG_INFO, "SOLVE[%s]: %s (%zu moves, %llu states visited, %.5f ms)",
              solvers_[i].name,
              run.result.found ? run.result.notation().c_str() : "no solution",
              run.result.moves.size(), (unsigned long long)run.result.expanded,
@@ -472,7 +489,7 @@ void App::draw_slot_labels() const {
 void App::draw_help() const {
   using namespace layout;
   const char *lines[] = {
-      "U D L R F B turn  |  SHIFT = inverse",
+      "U D L R F B turn  |  SHIFT = inverse  |  F11 fullscreen  |  ESC quit",
       "X random seed  |  S type seed  |  Z redo seed  |  <- -> length",
       "1-4/TAB solver  |  UP/DOWN DFS limit  |  SPACE solve/play  |  C compare "
       "all",
@@ -499,7 +516,7 @@ void App::draw_solver_list() const {
       label += fmt(" (limit %d)", solvers_[i].limited->limit());
     draw_text(label, 34, y, TEXT_BIG, selected ? RAYWHITE : GRAY);
     if (solvers_[i].solver == &astar_)
-      draw_text(fmt("tables built once: %.0f ms", astarTableMs_),
+      draw_text(fmt("tables built once: %.5f ms", astarTableMs_),
                 SOLVER_ROW_W + 20, y + 2, TEXT, GRAY);
   }
 }
@@ -548,7 +565,7 @@ std::string App::run_label(int solver, bool numbered) const {
 
 void App::draw_results_table() const {
   using namespace layout;
-  int x = TABLE_X, y = TABLE_Y;
+  int x = table_x(), y = TABLE_Y;
   DrawRectangleRounded({(float)x - 10, (float)y - 10, TABLE_W, TABLE_H}, 0.05f,
                        6, PANEL);
   draw_text(results_.fromSeed ? fmt("Results  (seed %u, %d moves)",
@@ -572,8 +589,8 @@ void App::draw_results_table() const {
       draw_text("-", x + COL_TIME, y, TEXT, GRAY);
       continue;
     }
-    draw_text(run->ms < 1000 ? fmt("%.1f ms", run->ms)
-                             : fmt("%.2f s", run->ms / 1000),
+    draw_text(run->ms < 1000 ? fmt("%.5f ms", run->ms)
+                             : fmt("%.5f s", run->ms / 1000),
               x + COL_TIME, y, TEXT, LIGHTGRAY);
     if (!run->result.found) {
       draw_text("no solution", x + COL_MOVES, y, TEXT, RED);
@@ -589,13 +606,14 @@ void App::draw_results_table() const {
 void App::draw_solutions() const {
   using namespace layout;
   draw_text("Solutions  (pick one with 1-4, step with N / P)",
-            MARGIN, SOLUTIONS_Y, TEXT, GRAY);
+            MARGIN, solutions_y(), TEXT, GRAY);
 
   for (int i = 0; i < (int)solvers_.size(); ++i) {
     int y = solution_row_y(i);
     bool selected = i == selected_;
     if (selected)
-      DrawRectangleRounded({4, (float)y - 6, SCREEN_W - 8, 44}, 0.15f, 6,
+      DrawRectangleRounded({4, (float)y - 6, (float)GetScreenWidth() - 8, 44},
+                           0.15f, 6,
                            ROW_ACTIVE);
     draw_text(run_label(i, true), SOLUTION_LABEL_X, y + 4, TEXT_BIG,
               solvers_[i].color);
@@ -624,10 +642,10 @@ void App::draw_solutions() const {
       highlight = animator_.active && animatedStep_ > 0 ? cursor_.step
                                                         : cursor_.step - 1;
     draw_chips(moves,
-               layout_chips(moves, SOLUTION_CHIPS_X, y, SOLUTION_CHIPS_W), done,
+               layout_chips(moves, SOLUTION_CHIPS_X, y, solution_chips_w()), done,
                highlight, solvers_[i].color);
     draw_text(here ? fmt("step %d/%zu", cursor_.step, moves.size())
                    : fmt("%zu moves", moves.size()),
-              SOLUTION_STEP_X, y + 4, TEXT, selected ? RAYWHITE : GRAY);
+              solution_step_x(), y + 4, TEXT, selected ? RAYWHITE : GRAY);
   }
 }
