@@ -7,7 +7,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "Solve.h"
+#include "../include/Solve.hpp"
 
 /**
  * Solucionador de duas fases, no estilo Kociemba/Thistlethwaite.
@@ -27,7 +27,7 @@
  * As duas fases buscam em um pequeno espaço *projetado* (2.187 chaves
  * de orientação, 40.320 chaves de permutação), em vez do grafo completo
  * de 88 milhões de estados, então nenhuma das duas fases chega perto da
- * profundidade em que AStarSolver::heuristic() satura. O custo: isto não é
+ * profundidade em que uma heurística simples satura. O custo: isto não é
  * globalmente ótimo. Uma solução realmente mais curta pode intercalar
  * movimentos que corrigem orientação e permutação de formas que a fase
  * 2 não consegue alcançar (ela fica restrita a não usar R, L, F, B como
@@ -58,9 +58,9 @@ public:
    *
    * Parâmetros
    * ----------
-   * start: uint64_t
+   * start: State
    *     Estado inicial.
-   * goal: uint64_t
+   * goal: State
    *     Precisa ser SOLVED_STATE; qualquer outro valor retorna "não
    *     encontrado".
    *
@@ -71,14 +71,13 @@ public:
    *     se existir uma. Não necessariamente a mais curta -- ver o
    *     comentário da classe.
    */
-  SearchResult solve(uint64_t start, uint64_t goal = SOLVED_STATE) const override {
+  SearchResult solve(State start, State goal = SOLVED_STATE) const override {
     SearchResult result;
     if (goal != SOLVED_STATE) return result;   // fora de escopo, ver comentário da classe
     if (is_goal(start, goal)) { result.found = true; return result; }
 
-    Search phase1 = solve_phase1(State(start));
-    State afterPhase1 = State(start);
-    for (const std::string& name : phase1.moves) afterPhase1 = transition(afterPhase1, move_by_name(name));
+    Search phase1 = solve_phase1(start);
+    State afterPhase1 = apply_moves(start, phase1.moves);
 
     Search phase2 = solve_phase2(afterPhase1);
 
@@ -91,11 +90,6 @@ public:
 
 private:
   struct Search { std::vector<std::string> moves; std::uint64_t expanded = 0; };
-
-  static const Move& move_by_name(const std::string& name) {
-    for (const Move& m : ALL_MOVES) if (name == m.name) return m;
-    throw std::invalid_argument("TwoPhaseSolver: movimento desconhecido '" + name + "'");
-  }
 
   // ---------------------------------------------------------- fase 1
 
@@ -219,8 +213,8 @@ private:
    */
   static std::vector<State> compute_phase2_targets() {
     std::vector<State> result;
-    for (uint64_t s : solved_orbit()) {
-      if (is_ori_solved(ori_key(State(s)))) result.push_back(perm_key(State(s)));
+    for (State s : solved_orbit()) {
+      if (is_ori_solved(ori_key(s))) result.push_back(perm_key(s));
     }
     return result;
   }
