@@ -31,9 +31,9 @@ CubeState InitCubeRenderState() {
     
     for (int slot = 0; slot < 8; slot++) {
         visualCube.cubies[slot].position = SLOT_POSITIONS[slot];
-        visualCube.cubies[slot].rotationAxis = (Vector3){ 0, 1, 0 };
+        visualCube.cubies[slot].rotationAxis = Vector3{ 0, 1, 0 };
         visualCube.cubies[slot].rotationAngle = 0.0f;
-        visualCube.cubies[slot].faceColors.fill((Color){ 20, 20, 20, 255 });
+        visualCube.cubies[slot].faceColors.fill(Color{ 20, 20, 20, 255 });
     }
     
     return visualCube;
@@ -109,7 +109,7 @@ void UpdateCubeFromLogic(const State &logicState, CubeState &cube){
         CubieColor cc = CubieColors[id];
 
         // Limpa as 6 faces com a cor base (plástico interno)
-        cube.cubies[slot].faceColors.fill((Color){ 20, 20, 20, 255 });
+        cube.cubies[slot].faceColors.fill(Color{ 20, 20, 20, 255 });
 
         /*
          * LUT:
@@ -162,7 +162,7 @@ static void DrawCubie(const CubieData &cubie, float size){
         rlTranslatef(cubie.position.x, cubie.position.y, cubie.position.z);
 
         // 1. Desenha o bloco principal de plástico
-        DrawCube((Vector3){0,0,0}, size, size, size, BLACK);
+        DrawCube(Vector3{0,0,0}, size, size, size, BLACK);
 
         // 2. Configuração dos Stickers
         float half = size / 2.0f;
@@ -171,17 +171,17 @@ static void DrawCubie(const CubieData &cubie, float size){
         float offset = half + (thickness / 2.0f) + 0.001f;
 
         // Frente (+Z)
-        DrawCube((Vector3){ 0, 0, offset }, stickerSize, stickerSize, thickness, cubie.faceColors[0]);
+        DrawCube(Vector3{ 0, 0, offset }, stickerSize, stickerSize, thickness, cubie.faceColors[0]);
         // Trás (-Z)
-        DrawCube((Vector3){ 0, 0, -offset }, stickerSize, stickerSize, thickness, cubie.faceColors[1]);
+        DrawCube(Vector3{ 0, 0, -offset }, stickerSize, stickerSize, thickness, cubie.faceColors[1]);
         // Cima (+Y)
-        DrawCube((Vector3){ 0, offset, 0 }, stickerSize, thickness, stickerSize, cubie.faceColors[2]);
+        DrawCube(Vector3{ 0, offset, 0 }, stickerSize, thickness, stickerSize, cubie.faceColors[2]);
         // Baixo (-Y)
-        DrawCube((Vector3){ 0, -offset, 0 }, stickerSize, thickness, stickerSize, cubie.faceColors[3]);
+        DrawCube(Vector3{ 0, -offset, 0 }, stickerSize, thickness, stickerSize, cubie.faceColors[3]);
         // Esquerda (-X)
-        DrawCube((Vector3){ -offset, 0, 0 }, thickness, stickerSize, stickerSize, cubie.faceColors[4]);
+        DrawCube(Vector3{ -offset, 0, 0 }, thickness, stickerSize, stickerSize, cubie.faceColors[4]);
         // Direita (+X)
-        DrawCube((Vector3){ offset, 0, 0 }, thickness, stickerSize, stickerSize, cubie.faceColors[5]);
+        DrawCube(Vector3{ offset, 0, 0 }, thickness, stickerSize, stickerSize, cubie.faceColors[5]);
     rlPopMatrix();
 }
 
